@@ -172,6 +172,10 @@ type Application struct {
 	shutdown func(context.Context) error
 }
 
+func (a *Application) Config() Config {
+	return a.cfg
+}
+
 // NewApplication creates a new Application with functional options (like New Relic v3)
 func NewApplication(opts ...ConfigOption) (*Application, error) {
 	// Default configuration
@@ -673,35 +677,35 @@ func WrapHandleFunc(app *Application, pattern string, hf http.HandlerFunc) (stri
 		// Return original handler if app is nil
 		return pattern, hf
 	}
-	
+
 	wrappedFunc := func(w http.ResponseWriter, r *http.Request) {
 		// Start a transaction for this request
 		txnName := r.Method + " " + pattern
 		txn := app.StartTransaction(txnName)
 		defer txn.End()
-		
+
 		// Set web request details
 		txn.SetWebRequestHTTP(r)
-		
+
 		// Add the transaction to the request context
 		ctx := NewContext(r.Context(), txn)
 		r = r.WithContext(ctx)
-		
+
 		// Wrap the response writer to capture status codes
 		wrappedWriter := &responseWriterWrapper{
 			ResponseWriter: w,
-			txn:           txn,
+			txn:            txn,
 		}
-		
+
 		// Call the original handler
 		hf(wrappedWriter, r)
-		
+
 		// Set response status if captured
 		if wrappedWriter.statusCode > 0 {
 			txn.AddAttribute("http.response.status_code", wrappedWriter.statusCode)
 		}
 	}
-	
+
 	return pattern, wrappedFunc
 }
 

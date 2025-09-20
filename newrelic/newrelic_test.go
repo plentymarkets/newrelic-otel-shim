@@ -384,7 +384,7 @@ func TestHTTPWrappers(t *testing.T) {
 	handlerFunc := func(w http.ResponseWriter, r *http.Request) {
 		// Debug: Check what's in the context
 		t.Logf("Request context: %+v", r.Context())
-		
+
 		// Verify transaction is available in context
 		txn := FromContext(r.Context())
 		if txn == nil {
@@ -394,18 +394,18 @@ func TestHTTPWrappers(t *testing.T) {
 			txn.AddAttribute("test.handler", "executed")
 			t.Log("Transaction found and attribute added successfully")
 		}
-		
+
 		w.WriteHeader(http.StatusCreated)
 		w.Write([]byte("created"))
 	}
 
 	// Test the new signature that returns (pattern, handlerFunc)
 	pattern, wrappedHandlerFunc := WrapHandleFunc(app, "/logout", handlerFunc)
-	
+
 	if pattern != "/logout" {
 		t.Errorf("Expected pattern '/logout', got '%s'", pattern)
 	}
-	
+
 	if wrappedHandlerFunc == nil {
 		t.Fatal("WrapHandleFunc should not return nil handler")
 	}
