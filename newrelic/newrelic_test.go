@@ -48,15 +48,15 @@ func TestConfigOptions(t *testing.T) {
 func TestConfigFromEnv(t *testing.T) {
 	// Save original environment
 	originalVars := map[string]string{
-		"OTEL_EXPORTER_OTLP_ENDPOINT":            os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
-		"OTEL_EXPORTER_OTLP_INSECURE":            os.Getenv("OTEL_EXPORTER_OTLP_INSECURE"),
-		"NEW_RELIC_APP_NAME":                     os.Getenv("NEW_RELIC_APP_NAME"),
-		"NEW_RELIC_LICENSE_KEY":                  os.Getenv("NEW_RELIC_LICENSE_KEY"),
-		"NEW_RELIC_ENABLED":                      os.Getenv("NEW_RELIC_ENABLED"),
-		"NEW_RELIC_DISTRIBUTED_TRACING_ENABLED":  os.Getenv("NEW_RELIC_DISTRIBUTED_TRACING_ENABLED"),
-		"OTEL_EXPORTER_OTLP_HEADERS":             os.Getenv("OTEL_EXPORTER_OTLP_HEADERS"),
+		"OTEL_EXPORTER_OTLP_ENDPOINT":           os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+		"OTEL_EXPORTER_OTLP_INSECURE":           os.Getenv("OTEL_EXPORTER_OTLP_INSECURE"),
+		"NEW_RELIC_APP_NAME":                    os.Getenv("NEW_RELIC_APP_NAME"),
+		"NEW_RELIC_LICENSE_KEY":                 os.Getenv("NEW_RELIC_LICENSE_KEY"),
+		"NEW_RELIC_ENABLED":                     os.Getenv("NEW_RELIC_ENABLED"),
+		"NEW_RELIC_DISTRIBUTED_TRACING_ENABLED": os.Getenv("NEW_RELIC_DISTRIBUTED_TRACING_ENABLED"),
+		"OTEL_EXPORTER_OTLP_HEADERS":            os.Getenv("OTEL_EXPORTER_OTLP_HEADERS"),
 	}
-	
+
 	// Restore environment after test
 	defer func() {
 		for key, value := range originalVars {
@@ -79,7 +79,7 @@ func TestConfigFromEnv(t *testing.T) {
 
 	app, err := NewApplication(
 		ConfigFromEnvironment(), // This should read from environment
-		ConfigEnabled(false), // Override to disable for test
+		ConfigEnabled(false),    // Override to disable for test
 	)
 	if err != nil {
 		t.Fatalf("NewApplication with ConfigFromEnvironment failed: %v", err)
@@ -102,7 +102,7 @@ func TestConfigFromEnv(t *testing.T) {
 		"api-key": "secret123",
 		"team":    "platform",
 	}
-	
+
 	for key, expectedValue := range expectedHeaders {
 		if actualValue, exists := app.cfg.Headers[key]; !exists {
 			t.Errorf("Expected header '%s' to exist", key)
