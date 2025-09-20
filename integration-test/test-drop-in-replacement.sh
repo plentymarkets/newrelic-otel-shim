@@ -61,6 +61,18 @@ else
     exit 1
 fi
 
+# Verify that the replacement is actually being used
+echo "🔍 Verifying replacement is active..."
+if go list -m github.com/newrelic/go-agent/v3/newrelic | grep -q "$SHIM_DIR"; then
+    echo "✅ Replacement verified: $(go list -m github.com/newrelic/go-agent/v3/newrelic)"
+else
+    echo "❌ Replacement not active!"
+    echo "Active module: $(go list -m github.com/newrelic/go-agent/v3/newrelic)"
+    echo "📋 Restoring original go.mod..."
+    mv go.mod.backup go.mod
+    exit 1
+fi
+
 echo "🔨 Building application with newrelic-otel-shim..."
 if go build -o app-shim .; then
     echo "✅ Build with newrelic-otel-shim: SUCCESS"
@@ -79,12 +91,36 @@ echo "🔍 Phase 3: Verification"
 echo "------------------------"
 
 # Compare binary sizes (should be different but both should exist)
-ORIGINAL_SIZE=$(stat -f%z app-original 2>/dev/null || stat -c%s app-original 2>/dev/null || echo "unknown")
-SHIM_SIZE=$(stat -f%z app-shim 2>/dev/null || stat -c%s app-shim 2>/dev/null || echo "unknown")
+ORIGINAL_SIZE=$(stat -f%z app-original 2>/dev/null || stat -c%s app-original 2>/dev/null || echo "0")
+SHIM_SIZE=$(stat -f%z app-shim 2>/dev/null || stat -c%s app-shim 2>/dev/null || echo "0")
 
 echo "📊 Binary sizes:"
 echo "   - Original:     $ORIGINAL_SIZE bytes"
 echo "   - With shim:    $SHIM_SIZE bytes"
+
+# Verify that sizes are different (indicating different implementations)
+if [ "$ORIGINAL_SIZE" = "0" ] || [ "$SHIM_SIZE" = "0" ]; then
+    echo "❌ Could not determine binary sizes"
+    echo "📋 Restoring original go.mod..."
+    mv go.mod.backup go.mod
+    exit 1
+elif [ "$ORIGINAL_SIZE" = "$SHIM_SIZE" ]; then
+    echo "❌ WARNING: Binary sizes are identical ($ORIGINAL_SIZE bytes)"
+    echo "   This suggests the replacement may not be working correctly!"
+    echo "   The shim should include OpenTelemetry dependencies, making it larger."
+    echo "📋 Restoring original go.mod..."
+    mv go.mod.backup go.mod
+    exit 1
+else
+    SIZE_DIFF=$((SHIM_SIZE - ORIGINAL_SIZE))
+    if [ $SIZE_DIFF -gt 0 ]; then
+        echo "✅ Shim binary is larger by $SIZE_DIFF bytes (expected - includes OTel dependencies)"
+    else
+        SIZE_DIFF=$((-SIZE_DIFF))
+        echo "✅ Original binary is larger by $SIZE_DIFF bytes (acceptable variation)"
+    fi
+    echo "✅ Binary sizes differ, confirming replacement is working"
+fi
 
 # Check that both binaries exist
 if [ -f app-original ] && [ -f app-shim ]; then

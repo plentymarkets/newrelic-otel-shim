@@ -7,7 +7,7 @@ This directory contains an integration test that verifies the `newrelic-otel-shi
 The test application (`main.go`) is a comprehensive example that uses various New Relic Go Agent v3 APIs:
 
 - **Basic Transactions**: Creating and managing transactions
-- **Web Transactions**: HTTP request/response handling  
+- **Web Transactions**: HTTP request/response handling
 - **Database Segments**: MySQL, PostgreSQL operations
 - **External Segments**: HTTP client calls
 - **Custom Segments**: Generic instrumentation
@@ -21,28 +21,33 @@ The test application (`main.go`) is a comprehensive example that uses various Ne
 The integration test (`test-drop-in-replacement.sh`) performs the following steps:
 
 ### Phase 1: Original New Relic Agent
+
 1. **Build**: Compiles the test application with the official New Relic Go Agent v3
 2. **Run**: Executes the application to verify it works correctly
 3. **Verify**: Confirms all New Relic APIs function as expected
 
-### Phase 2: Shim Replacement  
+### Phase 2: Shim Replacement
+
 1. **Replace**: Adds a `replace` directive in `go.mod` to use the shim instead
 2. **Build**: Recompiles the application with the shim (no code changes needed)
 3. **Run**: Executes the application with the shim
 4. **Verify**: Confirms all functionality still works
 
 ### Phase 3: Verification
+
 1. **Binary Comparison**: Verifies both versions build successfully
 2. **API Compatibility**: Confirms no import changes were required
 3. **Functionality**: Ensures both versions produce executable binaries
 
 ### Phase 4: Cleanup
+
 1. **Restore**: Returns `go.mod` to original state
 2. **Clean**: Removes test artifacts
 
 ## Running the Test
 
 ### Local Testing
+
 ```bash
 # From repository root
 make integration-test
@@ -54,6 +59,7 @@ chmod +x test-drop-in-replacement.sh
 ```
 
 ### CI/CD Integration
+
 The test runs automatically in GitHub Actions as part of the CI pipeline, ensuring every commit and pull request validates the drop-in replacement functionality.
 
 ## Expected Output
@@ -66,7 +72,7 @@ When successful, the test will show:
 
 ✅ The newrelic-otel-shim successfully functions as a drop-in replacement
 ✅ Original application builds and runs correctly
-✅ Application with shim builds and runs correctly  
+✅ Application with shim builds and runs correctly
 ✅ No source code changes required
 ✅ All New Relic APIs are compatible
 
