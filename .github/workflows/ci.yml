@@ -99,7 +99,6 @@ jobs:
       - name: Patch Go version
         run: |
           go mod edit -go=${{ matrix.go-version }}
-          go mod edit -toolchain=
           go mod tidy -compat=${{ matrix.go-version }}
 
       - name: Download dependencies
