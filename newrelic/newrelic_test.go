@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"testing"
 	"time"
 
@@ -36,6 +37,78 @@ func TestConfigOptions(t *testing.T) {
 	}
 	if app == nil {
 		t.Fatal("Application should not be nil")
+	}
+
+	err = app.Shutdown(5 * time.Second)
+	if err != nil {
+		t.Errorf("Shutdown failed: %v", err)
+	}
+}
+
+func TestConfigFromEnv(t *testing.T) {
+	// Save original environment
+	originalVars := map[string]string{
+		"OTEL_EXPORTER_OTLP_ENDPOINT":            os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+		"OTEL_EXPORTER_OTLP_INSECURE":            os.Getenv("OTEL_EXPORTER_OTLP_INSECURE"),
+		"NEW_RELIC_APP_NAME":                     os.Getenv("NEW_RELIC_APP_NAME"),
+		"NEW_RELIC_LICENSE_KEY":                  os.Getenv("NEW_RELIC_LICENSE_KEY"),
+		"NEW_RELIC_ENABLED":                      os.Getenv("NEW_RELIC_ENABLED"),
+		"NEW_RELIC_DISTRIBUTED_TRACING_ENABLED":  os.Getenv("NEW_RELIC_DISTRIBUTED_TRACING_ENABLED"),
+		"OTEL_EXPORTER_OTLP_HEADERS":             os.Getenv("OTEL_EXPORTER_OTLP_HEADERS"),
+	}
+	
+	// Restore environment after test
+	defer func() {
+		for key, value := range originalVars {
+			if value == "" {
+				os.Unsetenv(key)
+			} else {
+				os.Setenv(key, value)
+			}
+		}
+	}()
+
+	// Set test environment variables
+	os.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://custom-collector:4318")
+	os.Setenv("OTEL_EXPORTER_OTLP_INSECURE", "false")
+	os.Setenv("NEW_RELIC_APP_NAME", "env-test-app")
+	os.Setenv("NEW_RELIC_LICENSE_KEY", "env-license-123")
+	os.Setenv("NEW_RELIC_ENABLED", "true")
+	os.Setenv("NEW_RELIC_DISTRIBUTED_TRACING_ENABLED", "false")
+	os.Setenv("OTEL_EXPORTER_OTLP_HEADERS", "api-key=secret123,team=platform")
+
+	app, err := NewApplication(
+		ConfigFromEnvironment(), // This should read from environment
+		ConfigEnabled(false), // Override to disable for test
+	)
+	if err != nil {
+		t.Fatalf("NewApplication with ConfigFromEnvironment failed: %v", err)
+	}
+
+	// Verify configuration was read from environment
+	if app.cfg.OTLPEndpoint != "https://custom-collector:4318" {
+		t.Errorf("Expected OTLP endpoint 'https://custom-collector:4318', got '%s'", app.cfg.OTLPEndpoint)
+	}
+
+	if app.cfg.Insecure != false {
+		t.Errorf("Expected Insecure to be false, got %v", app.cfg.Insecure)
+	}
+
+	if app.cfg.AppName != "env-test-app" {
+		t.Errorf("Expected app name 'env-test-app', got '%s'", app.cfg.AppName)
+	}
+
+	expectedHeaders := map[string]string{
+		"api-key": "secret123",
+		"team":    "platform",
+	}
+	
+	for key, expectedValue := range expectedHeaders {
+		if actualValue, exists := app.cfg.Headers[key]; !exists {
+			t.Errorf("Expected header '%s' to exist", key)
+		} else if actualValue != expectedValue {
+			t.Errorf("Expected header '%s' to be '%s', got '%s'", key, expectedValue, actualValue)
+		}
 	}
 
 	err = app.Shutdown(5 * time.Second)

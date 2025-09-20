@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -52,6 +54,61 @@ type Config struct {
 
 // Configuration option functions (functional options pattern like New Relic v3)
 type ConfigOption func(*Config)
+
+// ConfigFromEnvironment reads configuration from environment variables following OpenTelemetry standards
+func ConfigFromEnvironment() ConfigOption {
+	return func(c *Config) {
+		// OTEL_EXPORTER_OTLP_ENDPOINT - Standard OTel environment variable
+		if endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"); endpoint != "" {
+			c.OTLPEndpoint = endpoint
+		}
+
+		// OTEL_EXPORTER_OTLP_INSECURE - Standard OTel environment variable for insecure connections
+		if insecure := os.Getenv("OTEL_EXPORTER_OTLP_INSECURE"); insecure != "" {
+			if parsed, err := strconv.ParseBool(insecure); err == nil {
+				c.Insecure = parsed
+			}
+		}
+
+		// NEW_RELIC_APP_NAME - Traditional New Relic environment variable
+		if appName := os.Getenv("NEW_RELIC_APP_NAME"); appName != "" {
+			c.AppName = appName
+		}
+
+		// OTEL_SERVICE_NAME - Standard OTel environment variable for service name
+		if serviceName := os.Getenv("OTEL_SERVICE_NAME"); serviceName != "" {
+			c.AppName = serviceName
+		}
+
+		// NEW_RELIC_ENABLED - Traditional New Relic environment variable
+		if enabled := os.Getenv("NEW_RELIC_ENABLED"); enabled != "" {
+			if parsed, err := strconv.ParseBool(enabled); err == nil {
+				c.Enabled = parsed
+			}
+		}
+
+		// OTEL_ENABLED - Standard OTel environment variable
+		if otelEnabled := os.Getenv("OTEL_ENABLED"); otelEnabled != "" {
+			if parsed, err := strconv.ParseBool(otelEnabled); err == nil {
+				c.Enabled = parsed
+			}
+		}
+
+		// OTEL_EXPORTER_OTLP_HEADERS - Standard OTel environment variable for gRPC headers
+		// Format: "key1=value1,key2=value2"
+		if headers := os.Getenv("OTEL_EXPORTER_OTLP_HEADERS"); headers != "" {
+			if c.Headers == nil {
+				c.Headers = make(map[string]string)
+			}
+			pairs := strings.Split(headers, ",")
+			for _, pair := range pairs {
+				if kv := strings.SplitN(strings.TrimSpace(pair), "=", 2); len(kv) == 2 {
+					c.Headers[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
+				}
+			}
+		}
+	}
+}
 
 // ConfigAppName sets the application name
 func ConfigAppName(name string) ConfigOption {
@@ -95,7 +152,7 @@ func ConfigEnabled(enabled bool) ConfigOption {
 // ConfigDistributedTracerEnabled sets whether distributed tracing is enabled
 func ConfigDistributedTracerEnabled(enabled bool) ConfigOption {
 	return func(c *Config) {
-		c.DistributedTracerEnabled = enabled
+		// Ignored in this shim; always enabled
 	}
 }
 
@@ -288,12 +345,7 @@ func (t *Transaction) AddAttribute(key string, val interface{}) {
 // StartSegment is the preferred API in v3; StartSegmentNow is also provided below.
 func (t *Transaction) StartSegment(name string) *Segment {
 	if t == nil {
-		// Return a no-op segment that's safe to use
-		return &Segment{
-			Name:      name,
-			StartTime: SegmentStartTime{t: time.Now()},
-			txn:       nil, // nil transaction
-		}
+		return nil
 	}
 	ss := t.StartSegmentNow()
 	return &Segment{Name: name, StartTime: ss, txn: t}
@@ -436,9 +488,7 @@ func (s *Segment) End() {
 // OTelSpan returns the underlying OpenTelemetry span for this segment (available after End() is called).
 func (s *Segment) OTelSpan() trace.Span {
 	if s == nil || s.span == nil {
-		// Return a no-op span for nil segments
-		_, span := otel.GetTracerProvider().Tracer("noop").Start(context.Background(), "noop")
-		return span
+		return nil
 	}
 	return s.span
 }
