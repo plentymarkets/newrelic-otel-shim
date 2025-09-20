@@ -32,21 +32,21 @@ func TestConfig(t *testing.T) {
 		{
 			name: "basic config",
 			config: Config{
-				AppName:     "test-app",
-				License:     "test-license",
-				Enabled:     true,
+				AppName:      "test-app",
+				License:      "test-license",
+				Enabled:      true,
 				OTLPEndpoint: "localhost:4317",
-				Insecure:    true,
+				Insecure:     true,
 			},
 		},
 		{
 			name: "with headers",
 			config: Config{
-				AppName:     "test-app-headers",
-				Enabled:     true,
+				AppName:      "test-app-headers",
+				Enabled:      true,
 				OTLPEndpoint: "localhost:4317",
-				Insecure:    true,
-				Headers:     map[string]string{"Authorization": "Bearer token"},
+				Insecure:     true,
+				Headers:      map[string]string{"Authorization": "Bearer token"},
 			},
 		},
 	}
@@ -92,10 +92,10 @@ func TestNewApplication_Disabled(t *testing.T) {
 
 func TestNewApplication_InvalidEndpoint(t *testing.T) {
 	config := Config{
-		AppName:     "test-app",
-		Enabled:     true,
+		AppName:      "test-app",
+		Enabled:      true,
 		OTLPEndpoint: "invalid-endpoint",
-		Insecure:    true,
+		Insecure:     true,
 	}
 
 	// This might fail due to invalid endpoint, but we test the error handling
@@ -755,7 +755,7 @@ func TestNilSafety(t *testing.T) {
 	if txn.MessageConsumerSegment() != nil {
 		t.Error("MessageConsumerSegment should return nil for nil transaction")
 	}
-	
+
 	// Context should return background context, not nil
 	ctx := txn.Context()
 	if ctx == nil {
@@ -808,7 +808,7 @@ func TestNilSafety(t *testing.T) {
 	if StartSegment(nil, "test") != nil {
 		t.Error("StartSegment should return nil for nil transaction")
 	}
-	
+
 	if StartExternalSegment(nil, nil) != nil {
 		t.Error("StartExternalSegment should return nil for nil transaction")
 	}
@@ -820,10 +820,10 @@ func TestIntegrationExample(t *testing.T) {
 	defer exporter.Reset()
 
 	config := Config{
-		AppName:     "integration-test",
-		Enabled:     false, // Use noop to avoid external dependencies
+		AppName:      "integration-test",
+		Enabled:      false, // Use noop to avoid external dependencies
 		OTLPEndpoint: "localhost:4317",
-		Insecure:    true,
+		Insecure:     true,
 	}
 
 	app, err := NewApplication(config)
@@ -843,14 +843,14 @@ func TestIntegrationExample(t *testing.T) {
 
 	// Database operation
 	ds := &DatastoreSegment{
-		StartTime:        txn.StartSegmentNow(),
-		Product:          DatastorePostgres,
-		Collection:       "users",
-		Operation:        "SELECT",
-		DatabaseName:     "production",
-		Host:             "db.example.com",
-		PortPathOrID:     "5432",
-		txn:              txn,
+		StartTime:    txn.StartSegmentNow(),
+		Product:      DatastorePostgres,
+		Collection:   "users",
+		Operation:    "SELECT",
+		DatabaseName: "production",
+		Host:         "db.example.com",
+		PortPathOrID: "5432",
+		txn:          txn,
 	}
 	ds.End()
 
