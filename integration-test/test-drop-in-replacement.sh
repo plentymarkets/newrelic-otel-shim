@@ -51,11 +51,11 @@ echo "replace github.com/newrelic/go-agent/v3 => $SHIM_DIR"
 # Clean module cache to ensure replacement is used
 go clean -modcache > /dev/null 2>&1 || true
 
-echo "📥 Downloading dependencies with shim replacement..."
-if go mod download; then
-    echo "✅ Dependencies download with shim: SUCCESS"
+echo "📥 Updating dependencies with shim replacement..."
+if go mod tidy && go mod download; then
+    echo "✅ Dependencies update with shim: SUCCESS"
 else
-    echo "❌ Dependencies download with shim: FAILED"
+    echo "❌ Dependencies update with shim: FAILED"
     echo "📋 Restoring original go.mod..."
     mv go.mod.backup go.mod
     exit 1
