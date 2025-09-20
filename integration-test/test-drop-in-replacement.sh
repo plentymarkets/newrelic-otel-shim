@@ -43,10 +43,10 @@ cp go.mod go.mod.backup
 
 # Add replace directive
 echo "" >> go.mod
-echo "replace github.com/newrelic/go-agent/v3/newrelic => $SHIM_DIR" >> go.mod
+echo "replace github.com/newrelic/go-agent/v3 => $SHIM_DIR" >> go.mod
 
 echo "📝 Modified go.mod with replace directive:"
-echo "replace github.com/newrelic/go-agent/v3/newrelic => $SHIM_DIR"
+echo "replace github.com/newrelic/go-agent/v3 => $SHIM_DIR"
 
 # Clean module cache to ensure replacement is used
 go clean -modcache > /dev/null 2>&1 || true
@@ -63,11 +63,11 @@ fi
 
 # Verify that the replacement is actually being used
 echo "🔍 Verifying replacement is active..."
-if go list -m github.com/newrelic/go-agent/v3/newrelic | grep -q "$SHIM_DIR"; then
-    echo "✅ Replacement verified: $(go list -m github.com/newrelic/go-agent/v3/newrelic)"
+if go list -m github.com/newrelic/go-agent/v3 | grep -q "$SHIM_DIR"; then
+    echo "✅ Replacement verified: $(go list -m github.com/newrelic/go-agent/v3)"
 else
     echo "❌ Replacement not active!"
-    echo "Active module: $(go list -m github.com/newrelic/go-agent/v3/newrelic)"
+    echo "Active module: $(go list -m github.com/newrelic/go-agent/v3)"
     echo "📋 Restoring original go.mod..."
     mv go.mod.backup go.mod
     exit 1

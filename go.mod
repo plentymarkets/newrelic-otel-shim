@@ -1,4 +1,4 @@
-module plentymarkets/newrelic-otel-shim
+module github.com/newrelic/go-agent/v3
 
 go 1.25.1
 

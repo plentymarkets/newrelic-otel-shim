@@ -3,7 +3,7 @@ module github.com/plentymarkets/newrelic-otel-shim/integration-test
 go 1.25.1
 
 require (
-	github.com/newrelic/go-agent/v3 v3.40.1 // indirect
+	github.com/newrelic/go-agent/v3 v3.40.1
 	golang.org/x/net v0.25.0 // indirect
 	golang.org/x/sys v0.20.0 // indirect
 	golang.org/x/text v0.15.0 // indirect
