@@ -1,4 +1,5 @@
 integration-test/app-original
 integration-test/integration-test
 integration-test/app-shim
+integration-test/test-app
 integration-test/go.mod.backup

@@ -50,6 +50,37 @@ type Config struct {
 	Headers      map[string]string // optional gRPC headers (sent per RPC)
 }
 
+// Configuration option functions (functional options pattern like New Relic v3)
+type ConfigOption func(*Config)
+
+// ConfigAppName sets the application name
+func ConfigAppName(name string) ConfigOption {
+	return func(c *Config) {
+		c.AppName = name
+	}
+}
+
+// ConfigLicense sets the license key (ignored in this shim)
+func ConfigLicense(key string) ConfigOption {
+	return func(c *Config) {
+		c.License = key
+	}
+}
+
+// ConfigEnabled sets whether the agent is enabled
+func ConfigEnabled(enabled bool) ConfigOption {
+	return func(c *Config) {
+		c.Enabled = enabled
+	}
+}
+
+// ConfigDistributedTracerEnabled sets whether distributed tracing is enabled
+func ConfigDistributedTracerEnabled(enabled bool) ConfigOption {
+	return func(c *Config) {
+		c.DistributedTracerEnabled = enabled
+	}
+}
+
 // Application mirrors newrelic.Application (subset).
 type Application struct {
 	cfg      Config
@@ -57,8 +88,24 @@ type Application struct {
 	shutdown func(context.Context) error
 }
 
-// NewApplication matches the v3 signature.
-func NewApplication(cfg Config) (*Application, error) {
+// NewApplication creates a new Application with functional options (like New Relic v3)
+func NewApplication(opts ...ConfigOption) (*Application, error) {
+	// Default configuration
+	cfg := Config{
+		AppName:                  "default-app",
+		License:                  "",
+		Enabled:                  true,
+		DistributedTracerEnabled: true,
+		OTLPEndpoint:             "otel-collector:4317",
+		Insecure:                 true,
+		Headers:                  make(map[string]string),
+	}
+	
+	// Apply configuration options
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	
 	if !cfg.Enabled {
 		otel.SetTracerProvider(noop.NewTracerProvider())
 		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
@@ -101,22 +148,37 @@ func NewApplication(cfg Config) (*Application, error) {
 	return &Application{cfg: cfg, tracer: tp.Tracer("newrelic-otel-shim"), shutdown: tp.Shutdown}, nil
 }
 
-// Shutdown mirrors app.Shutdown(ctx) semantics.
-func (a *Application) Shutdown(ctx context.Context) error {
-	if a.shutdown != nil {
-		return a.shutdown(ctx)
+// Shutdown mirrors app.Shutdown(timeout) semantics (New Relic v3 uses time.Duration).
+func (a *Application) Shutdown(timeout time.Duration) error {
+	if a == nil || a.shutdown == nil {
+		return nil // Silently succeed if application is nil
 	}
-	return nil
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return a.shutdown(ctx)
 }
 
 // StartTransaction mirrors newrelic.Application.StartTransaction.
 func (a *Application) StartTransaction(name string) *Transaction {
+	if a == nil || a.tracer == nil {
+		// Return a noop transaction that's safe to use
+		noopTracer := otel.GetTracerProvider().Tracer("noop")
+		ctx, span := noopTracer.Start(context.Background(), name)
+		return &Transaction{
+			tracer: noopTracer,
+			ctx:    ctx,
+			span:   span,
+		}
+	}
 	ctx, span := a.tracer.Start(context.Background(), name)
 	return &Transaction{tracer: a.tracer, ctx: ctx, span: span}
 }
 
 // RecordCustomEvent maps to a span event on the root span.
 func (a *Application) RecordCustomEvent(name string, attrs map[string]interface{}) error {
+	if a == nil || a.tracer == nil {
+		return nil // Silently ignore if application is nil
+	}
 	// Create a short-lived span to attach the event if no active txn
 	_, span := a.tracer.Start(context.Background(), "custom.event")
 	defer span.End()
@@ -208,7 +270,12 @@ func (t *Transaction) AddAttribute(key string, val interface{}) {
 // StartSegment is the preferred API in v3; StartSegmentNow is also provided below.
 func (t *Transaction) StartSegment(name string) *Segment {
 	if t == nil {
-		return nil
+		// Return a no-op segment that's safe to use
+		return &Segment{
+			Name:      name,
+			StartTime: SegmentStartTime{t: time.Now()},
+			txn:       nil, // nil transaction
+		}
 	}
 	ss := t.StartSegmentNow()
 	return &Segment{Name: name, StartTime: ss, txn: t}
@@ -217,7 +284,12 @@ func (t *Transaction) StartSegment(name string) *Segment {
 // StartSegmentNow returns a token used for Segment/Datastore/External segments.
 type SegmentStartTime struct{ t time.Time }
 
-func (t *Transaction) StartSegmentNow() SegmentStartTime { return SegmentStartTime{t: time.Now()} }
+func (t *Transaction) StartSegmentNow() SegmentStartTime { 
+	if t == nil {
+		return SegmentStartTime{t: time.Now()} // Return valid time even if transaction is nil
+	}
+	return SegmentStartTime{t: time.Now()} 
+}
 
 // NewGoroutine returns a new Transaction reference in v3; here, we just reuse the context.
 func (t *Transaction) NewGoroutine() *Transaction {
@@ -289,8 +361,10 @@ func (t *Transaction) Context() context.Context {
 // OTelSpan returns the underlying OpenTelemetry span for this transaction.
 // This allows mixing New Relic shim API with native OTel SDK calls.
 func (t *Transaction) OTelSpan() trace.Span {
-	if t == nil {
-		return nil
+	if t == nil || t.span == nil {
+		// Return a no-op span for nil transactions
+		_, span := otel.GetTracerProvider().Tracer("noop").Start(context.Background(), "noop")
+		return span
 	}
 	return t.span
 }
@@ -343,10 +417,20 @@ func (s *Segment) End() {
 
 // OTelSpan returns the underlying OpenTelemetry span for this segment (available after End() is called).
 func (s *Segment) OTelSpan() trace.Span {
-	if s == nil {
-		return nil
+	if s == nil || s.span == nil {
+		// Return a no-op span for nil segments
+		_, span := otel.GetTracerProvider().Tracer("noop").Start(context.Background(), "noop")
+		return span
 	}
 	return s.span
+}
+
+// OTelContext returns the OpenTelemetry context for this segment.
+func (s *Segment) OTelContext() context.Context {
+	if s == nil || s.txn == nil {
+		return context.Background()
+	}
+	return s.txn.ctx
 }
 
 // Convenience alias to match deprecated free function.
