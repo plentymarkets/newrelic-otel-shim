@@ -141,10 +141,10 @@ func contextPropagationExample() {
 
     // Get OTel context for passing to functions expecting OTel context
     otelCtx := txn.OTelContext()
-    
+
     // Call a function that uses native OTel SDK
     performNativeOTelWork(otelCtx)
-    
+
     // The native OTel spans will be properly correlated with the NR transaction
 }
 
@@ -152,7 +152,7 @@ func performNativeOTelWork(ctx context.Context) {
     tracer := otel.Tracer("native-otel")
     _, span := tracer.Start(ctx, "native-operation")
     defer span.End()
-    
+
     // This span will be a child of the NR transaction span
     span.SetAttributes(attribute.String("framework", "native-otel"))
 }
@@ -190,6 +190,7 @@ go test -v
 ```
 
 Test coverage includes:
+
 - **Application configuration and lifecycle**
 - **Transaction creation, attributes, error handling**
 - **All segment types (generic, datastore, external, messaging)**
@@ -199,6 +200,7 @@ Test coverage includes:
 - **Integration scenarios mixing NR and OTel APIs**
 
 Run tests with coverage:
+
 ```bash
 go test -v -cover
 ```
@@ -239,7 +241,7 @@ make coverage
 This project uses GitHub Actions for continuous integration. The workflow automatically:
 
 - **Tests**: Runs the full test suite with race detection
-- **Build**: Verifies the code compiles successfully  
+- **Build**: Verifies the code compiles successfully
 - **Lint**: Runs golangci-lint for code quality checks
 - **Security**: Scans for security vulnerabilities with gosec
 - **Compatibility**: Tests against multiple Go versions (1.20, 1.21, 1.22)
@@ -248,6 +250,7 @@ This project uses GitHub Actions for continuous integration. The workflow automa
 The Go version is automatically read from `go.mod` for consistency.
 
 Workflows trigger on:
+
 - Push to `main` or `develop` branches
 - Pull requests targeting `main` or `develop`
 

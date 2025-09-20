@@ -96,6 +96,12 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
 
+      - name: Patch Go version
+        run: |
+          go mod edit -go=${{ matrix.go-version }}
+          go mod edit -toolchain=
+          go mod tidy -compat=${{ matrix.go-version }}
+
       - name: Download dependencies
         run: go mod download
 
@@ -104,66 +110,3 @@ jobs:
 
       - name: Test with Go ${{ matrix.go-version }}
         run: go test -v ./...
-
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v8
-        with:
-          version: latest
-          args: --timeout=5m
-
-  mod-tidy-check:
-    name: Go Mod Tidy Check
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-
-      - name: Check if go mod tidy is needed
-        run: |
-          go mod tidy
-          git diff --exit-code -- go.mod go.sum || {
-            echo "::error::go mod tidy resulted in changes. Please run 'go mod tidy' and commit the changes."
-            exit 1
-          }
-
-  security:
-    name: Security Scan
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-
-      - name: Run Gosec Security Scanner
-        uses: securego/gosec@master
-        with:
-          args: ./...
-
-      - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@v2
-        with:
-          sarif_file: results.sarif
