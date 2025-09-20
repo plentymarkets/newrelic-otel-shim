@@ -60,6 +60,24 @@ func ConfigAppName(name string) ConfigOption {
 	}
 }
 
+func ConfigOtlpEndpoint(endpoint string) ConfigOption {
+	return func(c *Config) {
+		c.OTLPEndpoint = endpoint
+	}
+}
+
+func ConfigOtlpInsecure(insecure bool) ConfigOption {
+	return func(c *Config) {
+		c.Insecure = insecure
+	}
+}
+
+func ConfigOtlpHeaders(headers map[string]string) ConfigOption {
+	return func(c *Config) {
+		c.Headers = headers
+	}
+}
+
 // ConfigLicense sets the license key (ignored in this shim)
 func ConfigLicense(key string) ConfigOption {
 	return func(c *Config) {
@@ -100,12 +118,12 @@ func NewApplication(opts ...ConfigOption) (*Application, error) {
 		Insecure:                 true,
 		Headers:                  make(map[string]string),
 	}
-	
+
 	// Apply configuration options
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	
+
 	if !cfg.Enabled {
 		otel.SetTracerProvider(noop.NewTracerProvider())
 		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
@@ -284,11 +302,11 @@ func (t *Transaction) StartSegment(name string) *Segment {
 // StartSegmentNow returns a token used for Segment/Datastore/External segments.
 type SegmentStartTime struct{ t time.Time }
 
-func (t *Transaction) StartSegmentNow() SegmentStartTime { 
+func (t *Transaction) StartSegmentNow() SegmentStartTime {
 	if t == nil {
 		return SegmentStartTime{t: time.Now()} // Return valid time even if transaction is nil
 	}
-	return SegmentStartTime{t: time.Now()} 
+	return SegmentStartTime{t: time.Now()}
 }
 
 // NewGoroutine returns a new Transaction reference in v3; here, we just reuse the context.

@@ -269,7 +269,7 @@ func TestExternalSegment(t *testing.T) {
 func TestMessageSegments(t *testing.T) {
 	app, _ := NewApplication(ConfigAppName("test-app"), ConfigEnabled(false))
 	txn := app.StartTransaction("message-test")
-    
+
 	// Test MessageProducerSegment
 	producer := &MessageProducerSegment{
 		StartTime:       txn.StartSegmentNow(),
@@ -410,4 +410,164 @@ func TestContextPropagationHelpers(t *testing.T) {
 
 	txn.End()
 }
-   
+
+func TestNilSafety(t *testing.T) {
+	// Test all methods with nil objects to ensure no panics
+
+	// Nil Transaction
+	var txn *Transaction
+	txn.End()                           // should not panic
+	txn.NoticeError(fmt.Errorf("test")) // should not panic
+	txn.AddAttribute("key", "value")    // should not panic
+	txn.SetName("test")                 // should not panic
+	txn.Ignore()                        // should not panic
+	txn.SetWebRequest(WebRequest{})     // should not panic
+	txn.SetWebRequestHTTP(nil)          // should not panic
+	txn.SetWebResponse(WebResponse{})   // should not panic
+	txn.SetWebResponseHTTP(nil)         // should not panic
+
+	// Test methods that return values
+	if txn.StartSegment("test") != nil {
+		t.Error("StartSegment should return nil for nil transaction")
+	}
+	if txn.NewGoroutine() != nil {
+		t.Error("NewGoroutine should return nil for nil transaction")
+	}
+	if txn.MessageProducerSegment() != nil {
+		t.Error("MessageProducerSegment should return nil for nil transaction")
+	}
+	if txn.MessageConsumerSegment() != nil {
+		t.Error("MessageConsumerSegment should return nil for nil transaction")
+	}
+
+	// Context should return background context, not nil
+	ctx := txn.Context()
+	if ctx == nil {
+		t.Error("Context should return background context for nil transaction")
+	}
+
+	// Nil Segment
+	var seg *Segment
+	seg.AddAttribute("key", "value") // should not panic
+	seg.End()                        // should not panic
+	span := seg.OTelSpan()           // should return nil
+	if span != nil {
+		t.Error("OTelSpan should return nil for nil segment")
+	}
+
+	// Nil DatastoreSegment
+	var ds *DatastoreSegment
+	ds.End() // should not panic
+	dsSpan := ds.OTelSpan()
+	if dsSpan != nil {
+		t.Error("OTelSpan should return nil for nil datastore segment")
+	}
+
+	// Nil ExternalSegment
+	var es *ExternalSegment
+	es.SetStatusCode(200) // should not panic
+	es.End()              // should not panic
+	esSpan := es.OTelSpan()
+	if esSpan != nil {
+		t.Error("OTelSpan should return nil for nil external segment")
+	}
+
+	// Nil MessageProducerSegment
+	var mps *MessageProducerSegment
+	mps.End() // should not panic
+	mpsSpan := mps.OTelSpan()
+	if mpsSpan != nil {
+		t.Error("OTelSpan should return nil for nil message producer segment")
+	}
+
+	// Nil MessageConsumerSegment
+	var mcs *MessageConsumerSegment
+	mcs.End() // should not panic
+	mcsSpan := mcs.OTelSpan()
+	if mcsSpan != nil {
+		t.Error("OTelSpan should return nil for nil message consumer segment")
+	}
+
+	// Test helper functions with nil transaction
+	if StartSegment(nil, "test") != nil {
+		t.Error("StartSegment should return nil for nil transaction")
+	}
+
+	if StartExternalSegment(nil, nil) != nil {
+		t.Error("StartExternalSegment should return nil for nil transaction")
+	}
+}
+
+// Integration test that combines multiple features
+func TestIntegrationExample(t *testing.T) {
+	exporter := setupTestTracer()
+	defer exporter.Reset()
+
+	app, err := NewApplication(
+		ConfigAppName("integration-test"),
+		ConfigEnabled(false),
+		ConfigDistributedTracerEnabled(true),
+	)
+	if err != nil {
+		t.Fatalf("NewApplication failed: %v", err)
+	}
+	defer app.Shutdown(5 * time.Second)
+
+	// Start main transaction
+	txn := app.StartTransaction("integration-operation")
+	txn.AddAttribute("operation.type", "integration-test")
+
+	// Create various segments
+	seg := txn.StartSegment("business-logic")
+	seg.AddAttribute("complexity", "high")
+	seg.End()
+
+	// Database operation
+	ds := &DatastoreSegment{
+		StartTime:    txn.StartSegmentNow(),
+		Product:      DatastorePostgres,
+		Collection:   "users",
+		Operation:    "SELECT",
+		DatabaseName: "production",
+		Host:         "db.example.com",
+		PortPathOrID: "5432",
+		txn:          txn,
+	}
+	ds.End()
+
+	// External API call
+	req := httptest.NewRequest("GET", "https://api.example.com/data", nil)
+	es := StartExternalSegment(txn, req)
+	es.SetStatusCode(200)
+	es.End()
+
+	// Message production
+	producer := txn.MessageProducerSegment()
+	producer.Library = "kafka"
+	producer.DestinationType = DestinationTypeTopic
+	producer.DestinationName = "events"
+	producer.Headers = map[string]string{"trace-id": "abc123"}
+	producer.End()
+
+	// Use breakout methods for custom OTel operations
+	childCtx, childSpan := txn.StartOTelSpan("custom-operation")
+	childSpan.SetAttributes(
+		attribute.String("custom.framework", "native-otel"),
+		attribute.Bool("is.important", true),
+	)
+	childSpan.AddEvent("Custom processing started")
+	childSpan.End()
+
+	// Verify context propagation
+	if SpanFromOTelContext(childCtx) == nil {
+		t.Error("Child context should contain span")
+	}
+
+	// Custom event
+	app.RecordCustomEvent("integration.completed", map[string]interface{}{
+		"duration_ms": 150,
+		"success":     true,
+	})
+
+	txn.End()
+}
