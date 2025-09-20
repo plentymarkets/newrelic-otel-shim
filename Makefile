@@ -44,6 +44,10 @@ check-mod-tidy: ## Check if go mod tidy is needed
 # CI simulation
 ci: deps vet lint test build check-mod-tidy security ## Run all CI checks locally
 
+integration-test: ## Run drop-in replacement integration test
+	@echo "Running drop-in replacement integration test..."
+	cd integration-test && chmod +x test-drop-in-replacement.sh && ./test-drop-in-replacement.sh
+
 # Clean up
 clean: ## Clean build artifacts
 	go clean ./...

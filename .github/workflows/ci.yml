@@ -109,3 +109,22 @@ jobs:
 
       - name: Test with Go ${{ matrix.go-version }}
         run: go test -v ./...
+
+  integration:
+    name: Drop-in Replacement Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Run Drop-in Replacement Integration Test
+        run: |
+          cd integration-test
+          chmod +x test-drop-in-replacement.sh
+          ./test-drop-in-replacement.sh
