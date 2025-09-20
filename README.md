@@ -1,5 +1,9 @@
 # newrelic-otel-shim
 
+[![CI](https://github.com/plentymarkets/newrelic-otel-shim/actions/workflows/ci.yml/badge.svg)](https://github.com/plentymarkets/newrelic-otel-shim/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/plentymarkets/newrelic-otel-shim)](https://goreportcard.com/report/github.com/plentymarkets/newrelic-otel-shim)
+[![codecov](https://codecov.io/gh/plentymarkets/newrelic-otel-shim/branch/main/graph/badge.svg)](https://codecov.io/gh/plentymarkets/newrelic-otel-shim)
+
 A lightweight compatibility shim that mimics the **New Relic Go Agent v3 API** but routes all telemetry through **OpenTelemetry** and exports it to an **OTel Collector** (via OTLP/gRPC).
 
 This allows you to:
@@ -198,5 +202,53 @@ Run tests with coverage:
 ```bash
 go test -v -cover
 ```
+
+---
+
+## Development
+
+### Prerequisites
+
+- Go (version specified in `go.mod`)
+- Make (optional, for convenience commands)
+
+### Local Development
+
+```bash
+# Install development tools
+make tools
+
+# Run all checks locally (simulates CI)
+make ci
+
+# Run tests
+make test
+
+# Run linting
+make lint
+
+# Run security scan
+make security
+
+# Generate coverage report
+make coverage
+```
+
+### CI/CD
+
+This project uses GitHub Actions for continuous integration. The workflow automatically:
+
+- **Tests**: Runs the full test suite with race detection
+- **Build**: Verifies the code compiles successfully  
+- **Lint**: Runs golangci-lint for code quality checks
+- **Security**: Scans for security vulnerabilities with gosec
+- **Compatibility**: Tests against multiple Go versions (1.20, 1.21, 1.22)
+- **Dependencies**: Ensures `go mod tidy` is up to date
+
+The Go version is automatically read from `go.mod` for consistency.
+
+Workflows trigger on:
+- Push to `main` or `develop` branches
+- Pull requests targeting `main` or `develop`
 
 ---
