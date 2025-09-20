@@ -185,6 +185,7 @@ func (t *Transaction) AddAttribute(key string, val interface{}) {
 
 // StartSegment is the preferred API in v3; StartSegmentNow is also provided below.
 func (t *Transaction) StartSegment(name string) *Segment {
+	if t == nil { return nil }
 	ss := t.StartSegmentNow()
 	return &Segment{Name: name, StartTime: ss, txn: t}
 }
@@ -194,13 +195,20 @@ type SegmentStartTime struct{ t time.Time }
 func (t *Transaction) StartSegmentNow() SegmentStartTime { return SegmentStartTime{t: time.Now()} }
 
 // NewGoroutine returns a new Transaction reference in v3; here, we just reuse the context.
-func (t *Transaction) NewGoroutine() *Transaction { return &Transaction{tracer: t.tracer, ctx: t.ctx, span: t.span} }
+func (t *Transaction) NewGoroutine() *Transaction { 
+	if t == nil { return nil }
+	return &Transaction{tracer: t.tracer, ctx: t.ctx, span: t.span} 
+}
 
 // SetName matches v3 API.
 func (t *Transaction) SetName(name string) { if t != nil { t.name.Store(name); } }
 
 // Ignore marks the transaction as ignored; here we set an attribute to aid filtering.
-func (t *Transaction) Ignore() { t.ignored.Store(true); if t.span != nil { t.span.SetAttributes(attribute.Bool("nr.ignored", true)) } }
+func (t *Transaction) Ignore() { 
+	if t == nil { return }
+	t.ignored.Store(true)
+	if t.span != nil { t.span.SetAttributes(attribute.Bool("nr.ignored", true)) } 
+}
 
 // SetWebRequest mirrors the v3 convenience wrapping for non-HTTP frameworks.
 func (t *Transaction) SetWebRequest(wr WebRequest) {
@@ -224,7 +232,10 @@ func (t *Transaction) SetWebResponse(w WebResponse) http.ResponseWriter { return
 // SetWebResponseHTTP mirrors v3: returns a possibly-wrapped ResponseWriter.
 func (t *Transaction) SetWebResponseHTTP(w http.ResponseWriter) http.ResponseWriter { return w }
 
-func (t *Transaction) Context() context.Context { return NewContext(t.ctx, t) }
+func (t *Transaction) Context() context.Context { 
+	if t == nil { return context.Background() }
+	return NewContext(t.ctx, t) 
+}
 
 // ==============================
 // OpenTelemetry Breakout Methods
@@ -282,7 +293,10 @@ func (s *Segment) OTelSpan() trace.Span {
 }
 
 // Convenience alias to match deprecated free function.
-func StartSegment(txn *Transaction, name string) *Segment { return txn.StartSegment(name) }
+func StartSegment(txn *Transaction, name string) *Segment { 
+	if txn == nil { return nil }
+	return txn.StartSegment(name) 
+}
 
 // ==============================
 // DatastoreSegment
@@ -355,13 +369,15 @@ type ExternalSegment struct {
 
 // StartExternalSegment matches v3 helper.
 func StartExternalSegment(txn *Transaction, req *http.Request) *ExternalSegment {
+	if txn == nil { return nil }
 	seg := &ExternalSegment{StartTime: txn.StartSegmentNow(), Request: req, txn: txn}
 	if req != nil { seg.URL = req.URL.String() }
 	return seg
 }
 
 func (es *ExternalSegment) SetStatusCode(code int) {
-	if es.span != nil { es.span.SetAttributes(semconv.HTTPResponseStatusCode(code)) }
+	if es == nil || es.span == nil { return }
+	es.span.SetAttributes(semconv.HTTPResponseStatusCode(code))
 }
 
 func (es *ExternalSegment) End() {
@@ -489,9 +505,11 @@ func (m *MessageConsumerSegment) OTelSpan() trace.Span {
 
 // Helpers to construct segments with the transaction like NR usage.
 func (t *Transaction) MessageProducerSegment() *MessageProducerSegment {
+	if t == nil { return nil }
 	return &MessageProducerSegment{StartTime: t.StartSegmentNow(), txn: t}
 }
 func (t *Transaction) MessageConsumerSegment() *MessageConsumerSegment {
+	if t == nil { return nil }
 	return &MessageConsumerSegment{StartTime: t.StartSegmentNow(), txn: t}
 }
 

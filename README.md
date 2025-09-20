@@ -176,3 +176,27 @@ func performNativeOTelWork(ctx context.Context) {
 4. Gradually replace old NR APIs with native OTel patterns.
 
 ---
+
+## Testing
+
+The shim includes comprehensive unit tests covering all functionality:
+
+```bash
+go test -v
+```
+
+Test coverage includes:
+- **Application configuration and lifecycle**
+- **Transaction creation, attributes, error handling**
+- **All segment types (generic, datastore, external, messaging)**
+- **Context propagation and HTTP wrappers**
+- **OpenTelemetry breakout methods**
+- **Nil safety and error conditions**
+- **Integration scenarios mixing NR and OTel APIs**
+
+Run tests with coverage:
+```bash
+go test -v -cover
+```
+
+---
