@@ -156,6 +156,15 @@ func ConfigDistributedTracerEnabled(enabled bool) ConfigOption {
 	}
 }
 
+// ConfigAppLogForwardingEnabled sets whether application log forwarding is enabled
+// This is a noop in this shim; included for API compatibility
+func ConfigAppLogForwardingEnabled(enabled bool) ConfigOption {
+	return func(c *Config) {
+		// Noop - log forwarding not implemented in this shim
+		// Included for drop-in replacement compatibility
+	}
+}
+
 // Application mirrors newrelic.Application (subset).
 type Application struct {
 	cfg      Config
@@ -656,10 +665,70 @@ func NewRoundTripper(original http.RoundTripper) http.RoundTripper {
 
 func WrapHandle(h http.Handler) http.Handler { return otelhttp.NewHandler(h, "http.server") }
 
-func WrapHandleFunc(hf http.HandlerFunc) http.HandlerFunc {
+// WrapHandleFunc wraps an http.HandlerFunc with OpenTelemetry instrumentation
+// Compatible with both standalone usage and router patterns like Gorilla Mux
+// Usage: router.HandleFunc(newrelic.WrapHandleFunc(app, "/logout", handlerFunc)).Methods("GET")
+func WrapHandleFunc(app *Application, pattern string, hf http.HandlerFunc) (string, http.HandlerFunc) {
+	if app == nil {
+		// Return original handler if app is nil
+		return pattern, hf
+	}
+	
+	wrappedFunc := func(w http.ResponseWriter, r *http.Request) {
+		// Start a transaction for this request
+		txnName := r.Method + " " + pattern
+		txn := app.StartTransaction(txnName)
+		defer txn.End()
+		
+		// Set web request details
+		txn.SetWebRequestHTTP(r)
+		
+		// Add the transaction to the request context
+		ctx := NewContext(r.Context(), txn)
+		r = r.WithContext(ctx)
+		
+		// Wrap the response writer to capture status codes
+		wrappedWriter := &responseWriterWrapper{
+			ResponseWriter: w,
+			txn:           txn,
+		}
+		
+		// Call the original handler
+		hf(wrappedWriter, r)
+		
+		// Set response status if captured
+		if wrappedWriter.statusCode > 0 {
+			txn.AddAttribute("http.response.status_code", wrappedWriter.statusCode)
+		}
+	}
+	
+	return pattern, wrappedFunc
+}
+
+// Legacy WrapHandleFunc for backward compatibility (without app parameter)
+func WrapHandleFuncLegacy(hf http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		otelhttp.NewHandler(hf, "http.server").ServeHTTP(w, r)
 	}
+}
+
+// responseWriterWrapper captures the status code for transaction attribution
+type responseWriterWrapper struct {
+	http.ResponseWriter
+	txn        *Transaction
+	statusCode int
+}
+
+func (w *responseWriterWrapper) WriteHeader(code int) {
+	w.statusCode = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *responseWriterWrapper) Write(data []byte) (int, error) {
+	if w.statusCode == 0 {
+		w.statusCode = http.StatusOK
+	}
+	return w.ResponseWriter.Write(data)
 }
 
 // WebRequest mirrors newrelic.WebRequest (subset used in examples).

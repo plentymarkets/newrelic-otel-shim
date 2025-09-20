@@ -31,6 +31,8 @@ func TestConfigOptions(t *testing.T) {
 		ConfigAppName("test-app"),
 		ConfigLicense("test-license"),
 		ConfigEnabled(true),
+		ConfigDistributedTracerEnabled(true),
+		ConfigAppLogForwardingEnabled(true), // Test the new noop option
 	)
 	if err != nil {
 		t.Fatalf("NewApplication failed: %v", err)
@@ -366,23 +368,59 @@ func TestMessageSegments(t *testing.T) {
 func TestHTTPWrappers(t *testing.T) {
 	app, _ := NewApplication(ConfigAppName("test-app"), ConfigEnabled(false))
 
-	// Test WrapHandleFunc
+	// Debug: Test transaction creation directly
+	txn := app.StartTransaction("debug-test")
+	if txn == nil {
+		t.Fatal("App should create valid transactions even when disabled")
+	}
+	ctx := NewContext(context.Background(), txn)
+	retrievedTxn := FromContext(ctx)
+	if retrievedTxn == nil {
+		t.Fatal("NewContext/FromContext should work correctly")
+	}
+	txn.End()
+
+	// Test new WrapHandleFunc with app and pattern
 	handlerFunc := func(w http.ResponseWriter, r *http.Request) {
+		// Debug: Check what's in the context
+		t.Logf("Request context: %+v", r.Context())
+		
+		// Verify transaction is available in context
+		txn := FromContext(r.Context())
+		if txn == nil {
+			t.Error("Transaction should be available in request context")
+		} else {
+			// Transaction exists, add some attributes to test it works
+			txn.AddAttribute("test.handler", "executed")
+			t.Log("Transaction found and attribute added successfully")
+		}
+		
 		w.WriteHeader(http.StatusCreated)
 		w.Write([]byte("created"))
 	}
 
-	wrappedHandlerFunc := WrapHandleFunc(handlerFunc)
+	// Test the new signature that returns (pattern, handlerFunc)
+	pattern, wrappedHandlerFunc := WrapHandleFunc(app, "/logout", handlerFunc)
+	
+	if pattern != "/logout" {
+		t.Errorf("Expected pattern '/logout', got '%s'", pattern)
+	}
+	
 	if wrappedHandlerFunc == nil {
-		t.Fatal("WrapHandleFunc should not return nil")
+		t.Fatal("WrapHandleFunc should not return nil handler")
 	}
 
-	req2 := httptest.NewRequest("POST", "/create", nil)
-	recorder2 := httptest.NewRecorder()
-	wrappedHandlerFunc(recorder2, req2)
+	// Test the wrapped handler
+	req := httptest.NewRequest("GET", "/logout", nil)
+	recorder := httptest.NewRecorder()
+	wrappedHandlerFunc(recorder, req)
 
-	if recorder2.Code != http.StatusCreated {
-		t.Errorf("Expected status 201, got %d", recorder2.Code)
+	if recorder.Code != http.StatusCreated {
+		t.Errorf("Expected status 201, got %d", recorder.Code)
+	}
+
+	if recorder.Body.String() != "created" {
+		t.Errorf("Expected body 'created', got '%s'", recorder.Body.String())
 	}
 
 	app.Shutdown(5 * time.Second)
