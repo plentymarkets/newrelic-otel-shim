@@ -133,6 +133,34 @@ func FromContext(ctx context.Context) *Transaction {
 }
 
 // ==============================
+// OpenTelemetry Context Propagation Helpers
+// ==============================
+
+// StartOTelSpan creates a new OpenTelemetry span as a child of the transaction's span.
+// This allows seamless integration between NR shim API and native OTel SDK.
+// The returned context can be used for further OTel operations within the same trace.
+func (t *Transaction) StartOTelSpan(name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
+	if t == nil || t.tracer == nil {
+		// Fallback to global tracer if transaction is nil
+		return otel.Tracer("fallback").Start(context.Background(), name, opts...)
+	}
+	return t.tracer.Start(t.ctx, name, opts...)
+}
+
+// ContextWithOTelSpan combines a New Relic transaction context with an existing OTel span.
+// This is useful when you have an OTel span from outside the shim that you want to 
+// associate with a NR transaction for proper context propagation.
+func ContextWithOTelSpan(txnCtx context.Context, span trace.Span) context.Context {
+	return trace.ContextWithSpan(txnCtx, span)
+}
+
+// SpanFromOTelContext extracts the active OTel span from a context, if any.
+// This is a convenience wrapper around trace.SpanFromContext for consistency.
+func SpanFromOTelContext(ctx context.Context) trace.Span {
+	return trace.SpanFromContext(ctx)
+}
+
+// ==============================
 // Transaction (struct to match v3)
 // ==============================
 
@@ -199,6 +227,31 @@ func (t *Transaction) SetWebResponseHTTP(w http.ResponseWriter) http.ResponseWri
 func (t *Transaction) Context() context.Context { return NewContext(t.ctx, t) }
 
 // ==============================
+// OpenTelemetry Breakout Methods
+// ==============================
+
+// OTelSpan returns the underlying OpenTelemetry span for this transaction.
+// This allows mixing New Relic shim API with native OTel SDK calls.
+func (t *Transaction) OTelSpan() trace.Span {
+	if t == nil { return nil }
+	return t.span
+}
+
+// OTelContext returns the OpenTelemetry context containing the active span.
+// Use this when you need to pass context to native OTel SDK operations.
+func (t *Transaction) OTelContext() context.Context {
+	if t == nil { return context.Background() }
+	return t.ctx
+}
+
+// OTelTracer returns the OpenTelemetry tracer used by this transaction.
+// This allows creating child spans or other OTel operations within the same trace.
+func (t *Transaction) OTelTracer() trace.Tracer {
+	if t == nil { return nil }
+	return t.tracer
+}
+
+// ==============================
 // Segment (generic code block)
 // ==============================
 
@@ -220,6 +273,12 @@ func (s *Segment) End() {
 	_, span := s.txn.tracer.Start(s.txn.ctx, s.Name, trace.WithTimestamp(s.StartTime.t))
 	s.span = span
 	span.End(trace.WithTimestamp(time.Now()))
+}
+
+// OTelSpan returns the underlying OpenTelemetry span for this segment (available after End() is called).
+func (s *Segment) OTelSpan() trace.Span {
+	if s == nil { return nil }
+	return s.span
 }
 
 // Convenience alias to match deprecated free function.
@@ -273,6 +332,12 @@ func (ds *DatastoreSegment) End() {
 	span.End(trace.WithTimestamp(time.Now()))
 }
 
+// OTelSpan returns the underlying OpenTelemetry span for this datastore segment (available after End() is called).
+func (ds *DatastoreSegment) OTelSpan() trace.Span {
+	if ds == nil { return nil }
+	return ds.span
+}
+
 // ==============================
 // ExternalSegment (HTTP clients)
 // ==============================
@@ -308,6 +373,12 @@ func (es *ExternalSegment) End() {
 	if es.URL != "" { span.SetAttributes(semconv.URLFull(es.URL)) }
 	if es.Response != nil { span.SetAttributes(semconv.HTTPResponseStatusCode(es.Response.StatusCode)) }
 	span.End(trace.WithTimestamp(time.Now()))
+}
+
+// OTelSpan returns the underlying OpenTelemetry span for this external segment (available after End() is called).
+func (es *ExternalSegment) OTelSpan() trace.Span {
+	if es == nil { return nil }
+	return es.span
 }
 
 // NewRoundTripper matches v3 helper for auto external segments.
@@ -378,6 +449,12 @@ func (m *MessageProducerSegment) End() {
 	span.End(trace.WithTimestamp(time.Now()))
 }
 
+// OTelSpan returns the underlying OpenTelemetry span for this message producer segment (available after End() is called).
+func (m *MessageProducerSegment) OTelSpan() trace.Span {
+	if m == nil { return nil }
+	return m.span
+}
+
 // MessageConsumerSegment mirrors newrelic.MessageConsumerSegment (common fields).
 type MessageConsumerSegment struct {
 	StartTime       SegmentStartTime
@@ -402,6 +479,12 @@ func (m *MessageConsumerSegment) End() {
 	if m.DestinationType != "" { span.SetAttributes(attribute.String("messaging.destination.kind", strings.ToLower(m.DestinationType))) }
 	span.SetAttributes(attribute.String("messaging.operation", "receive"))
 	span.End(trace.WithTimestamp(time.Now()))
+}
+
+// OTelSpan returns the underlying OpenTelemetry span for this message consumer segment (available after End() is called).
+func (m *MessageConsumerSegment) OTelSpan() trace.Span {
+	if m == nil { return nil }
+	return m.span
 }
 
 // Helpers to construct segments with the transaction like NR usage.
