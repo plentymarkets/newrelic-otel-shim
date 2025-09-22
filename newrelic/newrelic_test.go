@@ -701,7 +701,7 @@ func TestMetricsAPI(t *testing.T) {
 	if counter == nil {
 		t.Fatal("NewCounterMetric should not return nil")
 	}
-	
+
 	counter.Increment()
 	counter.Add(5.0)
 
@@ -710,7 +710,7 @@ func TestMetricsAPI(t *testing.T) {
 	if labeledCounter == nil {
 		t.Fatal("NewCounterMetric with labels should not return nil")
 	}
-	
+
 	labeledCounter.IncrementWithLabels("GET", "200")
 	labeledCounter.AddWithLabels(3.0, "POST", "201")
 
@@ -719,7 +719,7 @@ func TestMetricsAPI(t *testing.T) {
 	if gauge == nil {
 		t.Fatal("NewGaugeMetric should not return nil")
 	}
-	
+
 	gauge.Set(42.0)
 
 	// Test Gauge with Labels
@@ -727,7 +727,7 @@ func TestMetricsAPI(t *testing.T) {
 	if labeledGauge == nil {
 		t.Fatal("NewGaugeMetric with labels should not return nil")
 	}
-	
+
 	labeledGauge.SetWithLabels(100.0, "api")
 
 	// Test Histogram Metrics
@@ -735,7 +735,7 @@ func TestMetricsAPI(t *testing.T) {
 	if histogram == nil {
 		t.Fatal("NewHistogramMetric should not return nil")
 	}
-	
+
 	histogram.Observe(2.5)
 
 	// Test Histogram with Labels
@@ -743,16 +743,15 @@ func TestMetricsAPI(t *testing.T) {
 	if labeledHistogram == nil {
 		t.Fatal("NewHistogramMetric with labels should not return nil")
 	}
-	
-	labeledHistogram.ObserveWithLabels(1.2, "/api/users")
 
+	labeledHistogram.ObserveWithLabels(1.2, "/api/users")
 
 }
 
 func TestMetricsNilSafety(t *testing.T) {
 	// Test all metrics methods with nil application
 	var app *Application
-	
+
 	// Should not panic
 	err := app.RecordCustomMetric("test", 1.0)
 	if err != nil {
@@ -818,7 +817,7 @@ func TestMetricsDuplicateRegistration(t *testing.T) {
 	// Test duplicate RecordCustomMetric - should not panic
 	err1 := app.RecordCustomMetric("duplicate_metric", 123.0)
 	err2 := app.RecordCustomMetric("duplicate_metric", 456.0)
-	
+
 	if err1 != nil {
 		t.Errorf("First RecordCustomMetric should not error: %v", err1)
 	}
@@ -829,7 +828,7 @@ func TestMetricsDuplicateRegistration(t *testing.T) {
 	// Test duplicate counter creation - should return same metric
 	counter1 := app.NewCounterMetric("duplicate_counter", "Test counter")
 	counter2 := app.NewCounterMetric("duplicate_counter", "Test counter")
-	
+
 	if counter1 == nil {
 		t.Fatal("First counter should not be nil")
 	}
@@ -844,7 +843,7 @@ func TestMetricsDuplicateRegistration(t *testing.T) {
 	// Test duplicate gauge creation
 	gauge1 := app.NewGaugeMetric("duplicate_gauge", "Test gauge")
 	gauge2 := app.NewGaugeMetric("duplicate_gauge", "Test gauge")
-	
+
 	if gauge1 == nil {
 		t.Fatal("First gauge should not be nil")
 	}
@@ -859,7 +858,7 @@ func TestMetricsDuplicateRegistration(t *testing.T) {
 	buckets := []float64{0.1, 1.0, 10.0}
 	histogram1 := app.NewHistogramMetric("duplicate_histogram", "Test histogram", buckets)
 	histogram2 := app.NewHistogramMetric("duplicate_histogram", "Test histogram", buckets)
-	
+
 	if histogram1 == nil {
 		t.Fatal("First histogram should not be nil")
 	}
@@ -873,10 +872,10 @@ func TestMetricsDuplicateRegistration(t *testing.T) {
 	// Test operations on duplicate metrics work correctly
 	counter1.Increment()
 	counter2.Add(5.0) // Should be same underlying metric
-	
+
 	gauge1.Set(100.0)
 	gauge2.Set(200.0) // Should override previous value
-	
+
 	histogram1.Observe(0.5)
 	histogram2.Observe(1.5) // Should be same underlying metric
 }
