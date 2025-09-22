@@ -51,6 +51,7 @@ jobs:
         with:
           version: "latest"
           install-go: false
+          working-directory: ./v3
 
       - name: Run tests
         working-directory: ./v3
@@ -68,6 +69,7 @@ jobs:
           flags: unittests
           name: codecov-umbrella
           fail_ci_if_error: false
+          working-directory: ./v3
 
   build:
     name: Build
@@ -83,6 +85,7 @@ jobs:
           go-version-file: ./v3/go.mod
 
       - name: Build
+        working-directory: ./v3
         run: go build -v ./...
 
   compatibility:
