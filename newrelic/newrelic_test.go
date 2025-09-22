@@ -682,3 +682,201 @@ func TestIntegrationExample(t *testing.T) {
 
 	txn.End()
 }
+
+func TestMetricsAPI(t *testing.T) {
+	app, err := NewApplication(ConfigAppName("metrics-test"), ConfigEnabled(false))
+	if err != nil {
+		t.Fatalf("NewApplication failed: %v", err)
+	}
+	defer app.Shutdown(5 * time.Second)
+
+	// Test RecordCustomMetric
+	err = app.RecordCustomMetric("test_metric", 123.45)
+	if err != nil {
+		t.Errorf("RecordCustomMetric should not error: %v", err)
+	}
+
+	// Test Counter Metrics
+	counter := app.NewCounterMetric("test_counter", "Test counter metric")
+	if counter == nil {
+		t.Fatal("NewCounterMetric should not return nil")
+	}
+	
+	counter.Increment()
+	counter.Add(5.0)
+
+	// Test Counter with Labels
+	labeledCounter := app.NewCounterMetric("test_counter_labeled", "Test labeled counter", "method", "status")
+	if labeledCounter == nil {
+		t.Fatal("NewCounterMetric with labels should not return nil")
+	}
+	
+	labeledCounter.IncrementWithLabels("GET", "200")
+	labeledCounter.AddWithLabels(3.0, "POST", "201")
+
+	// Test Gauge Metrics
+	gauge := app.NewGaugeMetric("test_gauge", "Test gauge metric")
+	if gauge == nil {
+		t.Fatal("NewGaugeMetric should not return nil")
+	}
+	
+	gauge.Set(42.0)
+
+	// Test Gauge with Labels
+	labeledGauge := app.NewGaugeMetric("test_gauge_labeled", "Test labeled gauge", "service")
+	if labeledGauge == nil {
+		t.Fatal("NewGaugeMetric with labels should not return nil")
+	}
+	
+	labeledGauge.SetWithLabels(100.0, "api")
+
+	// Test Histogram Metrics
+	histogram := app.NewHistogramMetric("test_histogram", "Test histogram metric", []float64{0.1, 1, 5, 10})
+	if histogram == nil {
+		t.Fatal("NewHistogramMetric should not return nil")
+	}
+	
+	histogram.Observe(2.5)
+
+	// Test Histogram with Labels
+	labeledHistogram := app.NewHistogramMetric("test_histogram_labeled", "Test labeled histogram", []float64{0.1, 1, 5}, "endpoint")
+	if labeledHistogram == nil {
+		t.Fatal("NewHistogramMetric with labels should not return nil")
+	}
+	
+	labeledHistogram.ObserveWithLabels(1.2, "/api/users")
+
+
+}
+
+func TestMetricsNilSafety(t *testing.T) {
+	// Test all metrics methods with nil application
+	var app *Application
+	
+	// Should not panic
+	err := app.RecordCustomMetric("test", 1.0)
+	if err != nil {
+		t.Error("RecordCustomMetric with nil app should not error")
+	}
+
+	counter := app.NewCounterMetric("test", "help")
+	if counter == nil {
+		t.Fatal("NewCounterMetric with nil app should return empty metric")
+	}
+
+	gauge := app.NewGaugeMetric("test", "help")
+	if gauge == nil {
+		t.Fatal("NewGaugeMetric with nil app should return empty metric")
+	}
+
+	histogram := app.NewHistogramMetric("test", "help", nil)
+	if histogram == nil {
+		t.Fatal("NewHistogramMetric with nil app should return empty metric")
+	}
+
+	// Test nil metric methods (should not panic)
+	var nilMetric *Metric
+	nilMetric.Increment()
+	nilMetric.IncrementWithLabels("test")
+	nilMetric.Add(1.0)
+	nilMetric.AddWithLabels(1.0, "test")
+	nilMetric.Set(1.0)
+	nilMetric.SetWithLabels(1.0, "test")
+	nilMetric.Observe(1.0)
+	nilMetric.ObserveWithLabels(1.0, "test")
+}
+
+func TestSanitizeMetricName(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"simple_name", "simple_name"},
+		{"name.with.dots", "name_with_dots"},
+		{"name-with-dashes", "name_with_dashes"},
+		{"name with spaces", "name_with_spaces"},
+		{"123starts_with_number", "_123starts_with_number"},
+		{"", ""},
+		{"ValidName123", "ValidName123"},
+	}
+
+	for _, test := range tests {
+		result := sanitizeMetricName(test.input)
+		if result != test.expected {
+			t.Errorf("sanitizeMetricName(%q) = %q, expected %q", test.input, result, test.expected)
+		}
+	}
+}
+
+func TestMetricsDuplicateRegistration(t *testing.T) {
+	app, err := NewApplication(ConfigAppName("duplicate-test"), ConfigEnabled(false))
+	if err != nil {
+		t.Fatalf("NewApplication failed: %v", err)
+	}
+	defer app.Shutdown(5 * time.Second)
+
+	// Test duplicate RecordCustomMetric - should not panic
+	err1 := app.RecordCustomMetric("duplicate_metric", 123.0)
+	err2 := app.RecordCustomMetric("duplicate_metric", 456.0)
+	
+	if err1 != nil {
+		t.Errorf("First RecordCustomMetric should not error: %v", err1)
+	}
+	if err2 != nil {
+		t.Errorf("Second RecordCustomMetric should not error: %v", err2)
+	}
+
+	// Test duplicate counter creation - should return same metric
+	counter1 := app.NewCounterMetric("duplicate_counter", "Test counter")
+	counter2 := app.NewCounterMetric("duplicate_counter", "Test counter")
+	
+	if counter1 == nil {
+		t.Fatal("First counter should not be nil")
+	}
+	if counter2 == nil {
+		t.Fatal("Second counter should not be nil")
+	}
+	// They should be the same object
+	if counter1 != counter2 {
+		t.Error("Duplicate counter metrics should return same instance")
+	}
+
+	// Test duplicate gauge creation
+	gauge1 := app.NewGaugeMetric("duplicate_gauge", "Test gauge")
+	gauge2 := app.NewGaugeMetric("duplicate_gauge", "Test gauge")
+	
+	if gauge1 == nil {
+		t.Fatal("First gauge should not be nil")
+	}
+	if gauge2 == nil {
+		t.Fatal("Second gauge should not be nil")
+	}
+	if gauge1 != gauge2 {
+		t.Error("Duplicate gauge metrics should return same instance")
+	}
+
+	// Test duplicate histogram creation
+	buckets := []float64{0.1, 1.0, 10.0}
+	histogram1 := app.NewHistogramMetric("duplicate_histogram", "Test histogram", buckets)
+	histogram2 := app.NewHistogramMetric("duplicate_histogram", "Test histogram", buckets)
+	
+	if histogram1 == nil {
+		t.Fatal("First histogram should not be nil")
+	}
+	if histogram2 == nil {
+		t.Fatal("Second histogram should not be nil")
+	}
+	if histogram1 != histogram2 {
+		t.Error("Duplicate histogram metrics should return same instance")
+	}
+
+	// Test operations on duplicate metrics work correctly
+	counter1.Increment()
+	counter2.Add(5.0) // Should be same underlying metric
+	
+	gauge1.Set(100.0)
+	gauge2.Set(200.0) // Should override previous value
+	
+	histogram1.Observe(0.5)
+	histogram2.Observe(1.5) // Should be same underlying metric
+}

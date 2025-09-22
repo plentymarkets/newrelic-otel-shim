@@ -14,6 +14,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -170,6 +172,13 @@ type Application struct {
 	cfg      Config
 	tracer   trace.Tracer
 	shutdown func(context.Context) error
+	
+	// OpenTelemetry metrics
+	meter metric.Meter
+	
+	// Metrics registry to prevent duplicate metric registration
+	metricsRegistry map[string]interface{} // stores OTel metrics by name
+	metricsMutex    sync.RWMutex
 }
 
 func (a *Application) Config() Config {
@@ -197,7 +206,13 @@ func NewApplication(opts ...ConfigOption) (*Application, error) {
 	if !cfg.Enabled {
 		otel.SetTracerProvider(noop.NewTracerProvider())
 		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
-		return &Application{cfg: cfg, tracer: otel.Tracer("noop"), shutdown: func(context.Context) error { return nil }}, nil
+		return &Application{
+			cfg:             cfg,
+			tracer:          otel.Tracer("noop"),
+			meter:           otel.Meter("noop"),
+			shutdown:        func(context.Context) error { return nil },
+			metricsRegistry: make(map[string]interface{}),
+		}, nil
 	}
 
 	ctx := context.Background()
@@ -233,7 +248,13 @@ func NewApplication(opts ...ConfigOption) (*Application, error) {
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 
-	return &Application{cfg: cfg, tracer: tp.Tracer("newrelic-otel-shim"), shutdown: tp.Shutdown}, nil
+	return &Application{
+		cfg:             cfg,
+		tracer:          tp.Tracer("newrelic-otel-shim"),
+		meter:           otel.Meter("newrelic-otel-shim"),
+		shutdown:        tp.Shutdown,
+		metricsRegistry: make(map[string]interface{}),
+	}, nil
 }
 
 // Shutdown mirrors app.Shutdown(timeout) semantics (New Relic v3 uses time.Duration).
@@ -890,3 +911,357 @@ func (h headerCreds) GetRequestMetadata(ctx context.Context, uri ...string) (map
 	return h, nil
 }
 func (h headerCreds) RequireTransportSecurity() bool { return !true /* allow with insecure too */ }
+
+// ==============================
+// Metrics API (Prometheus Backend)
+// ==============================
+
+// MetricType represents different types of metrics
+type MetricType string
+
+const (
+	MetricTypeCounter   MetricType = "counter"
+	MetricTypeGauge     MetricType = "gauge"
+	MetricTypeHistogram MetricType = "histogram"
+	MetricTypeSummary   MetricType = "summary"
+)
+
+// Metric represents a New Relic metric that's backed by OpenTelemetry
+type Metric struct {
+	name        string
+	metricType  MetricType
+	help        string
+	labels      []string
+	
+	// OpenTelemetry metric instances
+	int64Counter     metric.Int64Counter
+	float64Counter   metric.Float64Counter
+	int64Gauge       metric.Int64Gauge
+	float64Gauge     metric.Float64Gauge
+	int64Histogram   metric.Int64Histogram
+	float64Histogram metric.Float64Histogram
+}
+
+// RecordCustomMetric records a custom metric value (New Relic v3 API)
+func (app *Application) RecordCustomMetric(name string, value float64) error {
+	if app == nil {
+		return nil
+	}
+	
+	sanitizedName := sanitizeMetricName("custom_" + name)
+	
+	app.metricsMutex.Lock()
+	defer app.metricsMutex.Unlock()
+	
+	// Check if metric already exists
+	if existing, exists := app.metricsRegistry[sanitizedName]; exists {
+		if gauge, ok := existing.(*Metric); ok && gauge.metricType == MetricTypeGauge {
+			// Metric exists, just set the value
+			gauge.Set(value)
+			return nil
+		}
+	}
+	
+	// Metric doesn't exist, create new gauge metric
+	otelGauge, err := app.meter.Float64Gauge(
+		sanitizedName,
+		metric.WithDescription("Custom metric: "+name),
+	)
+	if err != nil {
+		return err
+	}
+	
+	// Create and store metric wrapper
+	m := &Metric{
+		name:         name,
+		metricType:   MetricTypeGauge,
+		help:         "Custom metric: " + name,
+		float64Gauge: otelGauge,
+	}
+	app.metricsRegistry[sanitizedName] = m
+	
+	// Now set the value on the newly created metric
+	m.Set(value)
+	return nil
+}
+
+// NewCounterMetric creates a new counter metric
+func (app *Application) NewCounterMetric(name, help string, labels ...string) *Metric {
+	if app == nil {
+		return &Metric{} // Return empty metric for nil app
+	}
+	
+	sanitizedName := sanitizeMetricName(name)
+	registryKey := sanitizedName + "_counter"
+	
+	app.metricsMutex.Lock()
+	defer app.metricsMutex.Unlock()
+	
+	// Check if metric already exists
+	if existing, exists := app.metricsRegistry[registryKey]; exists {
+		if metric, ok := existing.(*Metric); ok {
+			return metric
+		}
+	}
+	
+	// Metric doesn't exist, create new counter metric
+	m := &Metric{
+		name:       name,
+		metricType: MetricTypeCounter,
+		help:       help,
+		labels:     labels,
+	}
+	
+	if len(labels) == 0 {
+		// Create simple counter
+		counter, err := app.meter.Int64Counter(
+			sanitizedName,
+			metric.WithDescription(help),
+		)
+		if err == nil {
+			m.int64Counter = counter
+		}
+	}
+	// Note: OpenTelemetry doesn't have built-in label vectors like Prometheus
+	// Labels are passed at record time via attributes
+	
+	// Store in registry
+	app.metricsRegistry[registryKey] = m
+	return m
+}
+
+// NewGaugeMetric creates a new gauge metric
+func (app *Application) NewGaugeMetric(name, help string, labels ...string) *Metric {
+	if app == nil {
+		return &Metric{}
+	}
+	
+	sanitizedName := sanitizeMetricName(name)
+	registryKey := sanitizedName + "_gauge"
+	
+	app.metricsMutex.Lock()
+	defer app.metricsMutex.Unlock()
+	
+	// Check if metric already exists
+	if existing, exists := app.metricsRegistry[registryKey]; exists {
+		if metric, ok := existing.(*Metric); ok {
+			return metric
+		}
+	}
+	
+	// Metric doesn't exist, create new gauge metric
+	m := &Metric{
+		name:       name,
+		metricType: MetricTypeGauge,
+		help:       help,
+		labels:     labels,
+	}
+	
+	if len(labels) == 0 {
+		// Create simple gauge
+		gauge, err := app.meter.Float64Gauge(
+			sanitizedName,
+			metric.WithDescription(help),
+		)
+		if err == nil {
+			m.float64Gauge = gauge
+		}
+	}
+	// Note: OpenTelemetry doesn't have built-in label vectors like Prometheus
+	// Labels are passed at record time via attributes
+	
+	// Store in registry
+	app.metricsRegistry[registryKey] = m
+	return m
+}
+
+// NewHistogramMetric creates a new histogram metric
+func (app *Application) NewHistogramMetric(name, help string, buckets []float64, labels ...string) *Metric {
+	if app == nil {
+		return &Metric{}
+	}
+	
+	sanitizedName := sanitizeMetricName(name)
+	registryKey := sanitizedName + "_histogram"
+	
+	app.metricsMutex.Lock()
+	defer app.metricsMutex.Unlock()
+	
+	// Check if metric already exists
+	if existing, exists := app.metricsRegistry[registryKey]; exists {
+		if metric, ok := existing.(*Metric); ok {
+			return metric
+		}
+	}
+	
+	// Metric doesn't exist, create new histogram metric
+	m := &Metric{
+		name:       name,
+		metricType: MetricTypeHistogram,
+		help:       help,
+		labels:     labels,
+	}
+	
+	if len(labels) == 0 {
+		// Create simple histogram
+		histogram, err := app.meter.Float64Histogram(
+			sanitizedName,
+			metric.WithDescription(help),
+		)
+		if err == nil {
+			m.float64Histogram = histogram
+		}
+	}
+	// Note: OpenTelemetry doesn't use bucket configuration like Prometheus
+	// Buckets are handled automatically by the backend
+	
+	// Store in registry
+	app.metricsRegistry[registryKey] = m
+	return m
+}
+
+// Increment increments a counter metric
+func (m *Metric) Increment() {
+	if m == nil || m.metricType != MetricTypeCounter {
+		return
+	}
+	if m.int64Counter != nil {
+		m.int64Counter.Add(context.Background(), 1)
+	} else if m.float64Counter != nil {
+		m.float64Counter.Add(context.Background(), 1.0)
+	}
+}
+
+// IncrementWithLabels increments a counter metric with labels  
+func (m *Metric) IncrementWithLabels(labelValues ...string) {
+	if m == nil || m.metricType != MetricTypeCounter || len(m.labels) == 0 {
+		return
+	}
+	
+	// Convert labels to attributes
+	attrs := make([]attribute.KeyValue, min(len(m.labels), len(labelValues)))
+	for i := range attrs {
+		attrs[i] = attribute.String(m.labels[i], labelValues[i])
+	}
+	
+	if m.int64Counter != nil {
+		m.int64Counter.Add(context.Background(), 1, metric.WithAttributes(attrs...))
+	} else if m.float64Counter != nil {
+		m.float64Counter.Add(context.Background(), 1.0, metric.WithAttributes(attrs...))
+	}
+}// Add adds a value to a counter metric
+func (m *Metric) Add(value float64) {
+	if m == nil || m.metricType != MetricTypeCounter {
+		return
+	}
+	if m.int64Counter != nil {
+		m.int64Counter.Add(context.Background(), int64(value))
+	} else if m.float64Counter != nil {
+		m.float64Counter.Add(context.Background(), value)
+	}
+}
+
+// AddWithLabels adds a value to a counter metric with labels
+func (m *Metric) AddWithLabels(value float64, labelValues ...string) {
+	if m == nil || m.metricType != MetricTypeCounter || len(m.labels) == 0 {
+		return
+	}
+	
+	// Convert labels to attributes
+	attrs := make([]attribute.KeyValue, min(len(m.labels), len(labelValues)))
+	for i := range attrs {
+		attrs[i] = attribute.String(m.labels[i], labelValues[i])
+	}
+	
+	if m.int64Counter != nil {
+		m.int64Counter.Add(context.Background(), int64(value), metric.WithAttributes(attrs...))
+	} else if m.float64Counter != nil {
+		m.float64Counter.Add(context.Background(), value, metric.WithAttributes(attrs...))
+	}
+}
+
+// Set sets a gauge metric value
+func (m *Metric) Set(value float64) {
+	if m == nil || m.metricType != MetricTypeGauge {
+		return
+	}
+	if m.int64Gauge != nil {
+		m.int64Gauge.Record(context.Background(), int64(value))
+	} else if m.float64Gauge != nil {
+		m.float64Gauge.Record(context.Background(), value)
+	}
+}
+
+// SetWithLabels sets a gauge metric value with labels
+func (m *Metric) SetWithLabels(value float64, labelValues ...string) {
+	if m == nil || m.metricType != MetricTypeGauge || len(m.labels) == 0 {
+		return
+	}
+	
+	// Convert labels to attributes
+	attrs := make([]attribute.KeyValue, min(len(m.labels), len(labelValues)))
+	for i := range attrs {
+		attrs[i] = attribute.String(m.labels[i], labelValues[i])
+	}
+	
+	if m.int64Gauge != nil {
+		m.int64Gauge.Record(context.Background(), int64(value), metric.WithAttributes(attrs...))
+	} else if m.float64Gauge != nil {
+		m.float64Gauge.Record(context.Background(), value, metric.WithAttributes(attrs...))
+	}
+}
+
+// Observe observes a value for histogram metrics
+func (m *Metric) Observe(value float64) {
+	if m == nil || m.metricType != MetricTypeHistogram {
+		return
+	}
+	if m.int64Histogram != nil {
+		m.int64Histogram.Record(context.Background(), int64(value))
+	} else if m.float64Histogram != nil {
+		m.float64Histogram.Record(context.Background(), value)
+	}
+}
+
+// ObserveWithLabels observes a value for histogram metrics with labels
+func (m *Metric) ObserveWithLabels(value float64, labelValues ...string) {
+	if m == nil || m.metricType != MetricTypeHistogram || len(m.labels) == 0 {
+		return
+	}
+	
+	// Convert labels to attributes
+	attrs := make([]attribute.KeyValue, min(len(m.labels), len(labelValues)))
+	for i := range attrs {
+		attrs[i] = attribute.String(m.labels[i], labelValues[i])
+	}
+	
+	if m.int64Histogram != nil {
+		m.int64Histogram.Record(context.Background(), int64(value), metric.WithAttributes(attrs...))
+	} else if m.float64Histogram != nil {
+		m.float64Histogram.Record(context.Background(), value, metric.WithAttributes(attrs...))
+	}
+}
+
+// sanitizeMetricName converts a metric name to be Prometheus-compatible
+func sanitizeMetricName(name string) string {
+	// Replace invalid characters with underscores
+	sanitized := strings.ReplaceAll(name, ".", "_")
+	sanitized = strings.ReplaceAll(sanitized, "-", "_")
+	sanitized = strings.ReplaceAll(sanitized, " ", "_")
+	
+	// Ensure it starts with a letter or underscore
+	if len(sanitized) > 0 && !((sanitized[0] >= 'a' && sanitized[0] <= 'z') || 
+		(sanitized[0] >= 'A' && sanitized[0] <= 'Z') || sanitized[0] == '_') {
+		sanitized = "_" + sanitized
+	}
+	
+	return sanitized
+}
+
+// min returns the smaller of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
