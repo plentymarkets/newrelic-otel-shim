@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SHIM_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+SHIM_DIR="$(cd "$SCRIPT_DIR/../v3" && pwd)"
 
 echo "🧪 Starting New Relic Go Agent Drop-in Replacement Test"
 echo "======================================================"
