@@ -1,9 +1,5 @@
 # newrelic-otel-shim
 
-[![CI](https://github.com/plentymarkets/newrelic-otel-shim/actions/workflows/ci.yml/badge.svg)](https://github.com/plentymarkets/newrelic-otel-shim/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/plentymarkets/newrelic-otel-shim)](https://goreportcard.com/report/github.com/plentymarkets/newrelic-otel-shim)
-[![codecov](https://codecov.io/gh/plentymarkets/newrelic-otel-shim/branch/main/graph/badge.svg)](https://codecov.io/gh/plentymarkets/newrelic-otel-shim)
-
 A lightweight compatibility shim that mimics the **New Relic Go Agent v3 API** but routes all telemetry through **OpenTelemetry** and exports it to an **OTel Collector** (via OTLP/gRPC).
 
 This allows you to:
@@ -28,6 +24,15 @@ Then add this repo as a dependency:
 go get github.com/plentymarkets/newrelic-otel-shim/newrelic
 ```
 
+You also have to modify the creation of the application like this, at best using environment variables for configuration:
+
+```go
+app, _ := newrelic.NewApplication(newrelic.Config{
+        ConfigAppName("test-app"),
+        ConfigFromEnvironment(),
+    })
+```
+
 ---
 
 ## Quickstart
@@ -37,10 +42,8 @@ import "github.com/newrelic/go-agent/v3/newrelic"
 
 func main() {
     app, _ := newrelic.NewApplication(newrelic.Config{
-        AppName:      "my-service",
-        Enabled:      true,
-        OTLPEndpoint: "otel-collector:4317",
-        Insecure:     true, // in-cluster collector without TLS
+        ConfigAppName("test-app"),
+        ConfigFromEnvironment(),
     })
     defer app.Shutdown(context.Background())
 
@@ -99,10 +102,8 @@ import (
 
 func mixedExample() {
     app, _ := newrelic.NewApplication(newrelic.Config{
-        AppName:      "my-service",
-        Enabled:      true,
-        OTLPEndpoint: "otel-collector:4317",
-        Insecure:     true,
+        ConfigAppName("test-app"),
+        ConfigFromEnvironment(),
     })
 
     // Start with New Relic API
@@ -209,49 +210,15 @@ go test -v -cover
 
 ## Development
 
-### Prerequisites
-
-- Go (version specified in `go.mod`)
-- Make (optional, for convenience commands)
-
 ### Local Development
 
 ```bash
 # Install development tools
 make tools
 
-# Run all checks locally (simulates CI)
-make ci
-
 # Run tests
 make test
 
 # Run linting
 make lint
-
-# Run security scan
-make security
-
-# Generate coverage report
-make coverage
 ```
-
-### CI/CD
-
-This project uses GitHub Actions for continuous integration. The workflow automatically:
-
-- **Tests**: Runs the full test suite with race detection
-- **Build**: Verifies the code compiles successfully
-- **Lint**: Runs golangci-lint for code quality checks
-- **Security**: Scans for security vulnerabilities with gosec
-- **Compatibility**: Tests against multiple Go versions (1.20, 1.21, 1.22)
-- **Dependencies**: Ensures `go mod tidy` is up to date
-
-The Go version is automatically read from `go.mod` for consistency.
-
-Workflows trigger on:
-
-- Push to `main` or `develop` branches
-- Pull requests targeting `main` or `develop`
-
----
