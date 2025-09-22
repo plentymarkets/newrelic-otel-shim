@@ -31,7 +31,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // ==============================
@@ -217,15 +216,21 @@ func NewApplication(opts ...ConfigOption) (*Application, error) {
 
 	ctx := context.Background()
 	var dial []grpc.DialOption
+
+	var otlpOptions []otlptracegrpc.Option
+
 	if cfg.Insecure {
-		dial = append(dial, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		otlpOptions = append(otlpOptions, otlptracegrpc.WithInsecure())
 	}
 	if len(cfg.Headers) != 0 {
 		dial = append(dial, grpc.WithPerRPCCredentials(headerCreds(cfg.Headers)))
 	}
+
+	otlpOptions = append(otlpOptions, otlptracegrpc.WithEndpoint(cfg.OTLPEndpoint))
+	otlpOptions = append(otlpOptions, otlptracegrpc.WithDialOption(dial...))
+
 	exp, err := otlptracegrpc.New(ctx,
-		otlptracegrpc.WithEndpoint(cfg.OTLPEndpoint),
-		otlptracegrpc.WithDialOption(dial...),
+		otlpOptions...,
 	)
 	if err != nil {
 		return nil, err
