@@ -35,12 +35,15 @@ jobs:
             ${{ runner.os }}-go-
 
       - name: Download dependencies
+        working-directory: ./v3
         run: go mod download
 
       - name: Verify dependencies
+        working-directory: ./v3
         run: go mod verify
 
       - name: Run go vet
+        working-directory: ./v3
         run: go vet ./...
 
       - name: Run staticcheck
@@ -50,10 +53,12 @@ jobs:
           install-go: false
 
       - name: Run tests
+        working-directory: ./v3
         run: |
           go test -v -race -coverprofile=coverage.out ./...
 
       - name: Generate coverage report
+        working-directory: ./v3
         run: go tool cover -html=coverage.out -o coverage.html
 
       - name: Upload coverage reports to Codecov
@@ -97,17 +102,21 @@ jobs:
           go-version: ${{ matrix.go-version }}
 
       - name: Patch Go version
+        working-directory: ./v3
         run: |
           go mod edit -go=${{ matrix.go-version }}
           go mod tidy -compat=${{ matrix.go-version }}
 
       - name: Download dependencies
+        working-directory: ./v3
         run: go mod download
 
       - name: Build with Go ${{ matrix.go-version }}
+        working-directory: ./v3
         run: go build -v ./...
 
       - name: Test with Go ${{ matrix.go-version }}
+        working-directory: ./v3
         run: go test -v ./...
 
   integration:
