@@ -22,7 +22,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version-file: ./v3/go.mod
 
       - name: Cache Go modules
         uses: actions/cache@v3
@@ -80,7 +80,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version-file: ./v3/go.mod
 
       - name: Build
         run: go build -v ./...
@@ -130,7 +130,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version-file: ./v3/go.mod
 
       - name: Run Drop-in Replacement Integration Test
         run: |
