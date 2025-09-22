@@ -15,13 +15,13 @@ This allows you to:
 Add a **replace directive** to your `go.mod`:
 
 ```go
-replace github.com/newrelic/go-agent/v3/newrelic => github.com/plentymarkets/newrelic-otel-shim/newrelic v0.0.0
+replace github.com/newrelic/go-agent/v3 => github.com/plentymarkets/newrelic-otel-shim/v3 v3.0.2
 ```
 
 Then add this repo as a dependency:
 
 ```bash
-go get github.com/plentymarkets/newrelic-otel-shim/newrelic
+go get github.com/newrelic/go-agent/v3
 ```
 
 You also have to modify the creation of the application like this, at best using environment variables for configuration:
