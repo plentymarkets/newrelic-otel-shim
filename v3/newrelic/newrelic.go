@@ -337,6 +337,44 @@ func (t *Transaction) StartOTelSpan(name string, opts ...trace.SpanStartOption) 
 	return t.tracer.Start(t.ctx, name, opts...)
 }
 
+func (t *Transaction) InsertDistributedTraceHeaders(hdrs http.Header) {
+	if t == nil || t.span == nil || hdrs == nil {
+		return
+	}
+	// Inject New Relic trace headers into the provided HTTP headers
+	hdrs.Set("X-NewRelic-ID", t.span.SpanContext().TraceID().String())
+	hdrs.Set("X-NewRelic-Transaction", t.span.SpanContext().SpanID().String())
+}
+
+func (t *Transaction) AcceptDistributedTraceHeaders(tr string, hdrs http.Header) {
+	if t == nil || t.span == nil || hdrs == nil {
+		return
+	}
+	traceId := hdrs.Get("X-NewRelic-ID")
+	spanId := hdrs.Get("X-NewRelic-Transaction")
+
+	tid, err := trace.TraceIDFromHex(traceId)
+	if err != nil {
+		return
+	}
+	sid, err := trace.SpanIDFromHex(spanId)
+	if err != nil {
+		return
+	}
+
+	parentSC := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    tid,
+		SpanID:     sid,
+		TraceFlags: trace.FlagsSampled, // or 0 if not sampled
+		Remote:     true,
+	})
+
+	ctx := trace.ContextWithSpanContext(t.ctx, parentSC)
+
+	t.ctx = ctx
+	t.span = trace.SpanFromContext(ctx)
+}
+
 // ContextWithOTelSpan combines a New Relic transaction context with an existing OTel span.
 // This is useful when you have an OTel span from outside the shim that you want to
 // associate with a NR transaction for proper context propagation.
