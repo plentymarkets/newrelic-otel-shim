@@ -17,7 +17,6 @@ func NewFormatter(app *newrelic.Application, formatter logrus.Formatter) Context
 	}
 }
 
-
 func (f ContextFormatter) Format(e *logrus.Entry) ([]byte, error) {
 
 	txn := newrelic.FromContext(e.Context)
